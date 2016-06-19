@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+FZF="fzf-tmux -d 40%"
+GPG_AGENT="eval \$(keychain --quiet --agents gpg --eval)"
+shopt -s nullglob globstar
+
+typeit=0
+if [[ $1 == "--type" ]]; then
+	typeit=1
+	shift
+fi
+
+prefix=${PASSWORD_STORE_DIR-~/.password-store}
+password_files=( "$prefix"/**/*.gpg )
+password_files=( "${password_files[@]#"$prefix"/}" )
+password_files=( "${password_files[@]%.gpg}" )
+
+source ~/.fzf.bash
+
+password=$(printf '%s\n' "${password_files[@]}" | ${FZF})
+
+[[ -n $password ]] || exit
+
+if [[ $typeit -eq 0 ]]; then
+  tmux split-window -p 40 "${GPG_AGENT}; pass show -c \"$password\" 2>/dev/null && tmux display-message \"Password for \\\"$password\\\" copied\""
+else
+  if [[ -z $TMUX_PANE ]]; then # Run from a hotkey
+    TMUX_PANE=$(tmux display-message -p "#{pane_id}")
+  fi
+  tmux split-window -p 40 "${GPG_AGENT}; pass show \"$password\" 2>/dev/null | { read -r pass && tmux send-keys -t $TMUX_PANE \"\$pass\"; } && tmux display-message \"Password for \\\"$password\\\" sent\""
+fi
